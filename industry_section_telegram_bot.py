@@ -29,14 +29,14 @@ class Section:
 
 
 SECTIONS = [
-    Section("Yonhap heavy chemistry", "https://www.yna.co.kr/industry/heavy-chemistry"),
-    Section("The Guru industry", "https://www.theguru.co.kr/news/section.html?sec_no=108"),
-    Section("Maeil Business chemical", "https://www.mk.co.kr/news/business/chemical"),
-    Section("Business Post industry", "https://www.businesspost.co.kr/BP?command=sub&sub=2"),
-    Section("Hankyung ship marine", "https://www.hankyung.com/industry/ship-marine"),
-    Section("Hankyung construction machinery", "https://www.hankyung.com/industry/build-machinery"),
+    Section("연합 chemistry", "https://www.yna.co.kr/industry/heavy-chemistry"),
+    Section("더구루 industry", "https://www.theguru.co.kr/news/section.html?sec_no=108"),
+    Section("매일경제 chemical", "https://www.mk.co.kr/news/business/chemical"),
+    Section("EBN industry", "https://www.ebn.co.kr/news/articleList.html?sc_section_code=S1N5&view_type=sm"),
+    Section("조선비즈 shipbuilding", "https://biz.chosun.com/tag/shipbuilding/"),
+    Section("한경 ship marine", "https://www.hankyung.com/industry/ship-marine"),
+    Section("한경 construction machinery", "https://www.hankyung.com/industry/build-machinery"),
 ]
-
 
 def load_dotenv(dotenv_path: Path) -> None:
     if not dotenv_path.exists():
