@@ -3,7 +3,7 @@ name: Industry Section Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "0 0,3,6,9,12,21 * * *"
 
 permissions:
   contents: read
