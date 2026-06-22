@@ -3,8 +3,9 @@ name: Industry Section Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0,3,6,9,12,21 * * *"
-
+    # KST: 06:00, 08:00, 09:00, 10:00, 12:00, 14:00, 16:00, 18:00, 21:00
+    - cron: "0 0,1,3,5,7,9,12,21,23 * * *"
+    
 permissions:
   contents: read
 
