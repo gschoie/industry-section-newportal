@@ -46,6 +46,7 @@ Windows 작업 스케줄러에서는 `run_industry_section_bot.ps1`을 매시간
 
 - `INDUSTRY_ARTICLE_LIMIT=5` — 표시할 상위 기사 수
 - `INDUSTRY_DETECT_TOP_N=2` — 변경 판단에 쓰는 상단 기사 수 (표시 개수와 별개)
+- `INDUSTRY_MAIN_COLUMN_RATIO=0.66` — 본문 열 판정 폭 비율. 오른쪽 사이드바(많이 본 뉴스/베스트 클릭)를 제외하기 위해 `left < 화면폭 × 이 값`인 링크만 기사로 취급
 - `INDUSTRY_VIEWPORT_WIDTH=1440`
 - `INDUSTRY_VIEWPORT_HEIGHT=1800`
 - `INDUSTRY_FULL_PAGE_SCREENSHOT=false`

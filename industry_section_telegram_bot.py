@@ -224,18 +224,48 @@ def prepare_page(page: Page, section: Section) -> None:
 
 
 def extract_articles(page: Page, section: Section, limit: int) -> list[dict[str, str]]:
+    # Main content lives in the LEFT column; the right rail ("많이 본 뉴스",
+    # "베스트 클릭", 구독 등) sits high on the page and would otherwise be
+    # ranked above real articles. Keep only visible, on-page, left-column links.
+    main_col_ratio = float(os.getenv("INDUSTRY_MAIN_COLUMN_RATIO", "0.66"))
     raw_items = page.evaluate(
         """
-        () => Array.from(document.querySelectorAll('a[href]')).map((anchor) => {
-          const rect = anchor.getBoundingClientRect();
-          return {
-            title: anchor.innerText || anchor.textContent || '',
-            href: anchor.getAttribute('href') || '',
-            top: rect.top + window.scrollY,
-            left: rect.left + window.scrollX
-          };
-        })
-        """
+        (ratio) => {
+          const maxLeft = window.innerWidth * ratio;
+          return Array.from(document.querySelectorAll('a[href]')).map((anchor) => {
+            const rect = anchor.getBoundingClientRect();
+            const style = getComputedStyle(anchor);
+            const visible =
+              style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              style.opacity !== '0' &&
+              rect.width > 1 &&
+              rect.height > 1;
+            // Title = first non-empty line of the anchor text. Some sites put a
+            // short category badge (e.g. "방산") on the first line, so if that is
+            // too short we append the next line.
+            const lines = (anchor.innerText || anchor.textContent || '')
+              .split('\\n')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            let title = lines[0] || '';
+            if (title.length < 8 && lines.length > 1) {
+              title = (title + ' ' + lines[1]).trim();
+            }
+            return {
+              title: title,
+              href: anchor.getAttribute('href') || '',
+              top: rect.top + window.scrollY,
+              left: rect.left + window.scrollX,
+              visible: visible,
+            };
+          }).filter(
+            (item) =>
+              item.visible && item.left >= 0 && item.top >= 0 && item.left < maxLeft
+          );
+        }
+        """,
+        main_col_ratio,
     )
     candidates = []
     for item in raw_items:
