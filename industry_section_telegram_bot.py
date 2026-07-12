@@ -1,5 +1,7 @@
 import argparse
+import hashlib
 import html
+import json
 import mimetypes
 import os
 import re
@@ -20,6 +22,7 @@ from playwright.sync_api import Browser, Page, TimeoutError as PlaywrightTimeout
 KST = timezone(timedelta(hours=9), name="KST")
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "industry_section_captures"
+STATE_PATH = BASE_DIR / "industry_section_state.json"
 
 
 @dataclass(frozen=True)
@@ -29,14 +32,15 @@ class Section:
 
 
 SECTIONS = [
-    Section("연합 chemistry", "https://www.yna.co.kr/industry/heavy-chemistry"),
-    Section("더구루 industry", "https://www.theguru.co.kr/news/section.html?sec_no=108"),
-    Section("매일경제 chemical", "https://www.mk.co.kr/news/business/chemical"),
+    Section("Yonhap heavy chemistry", "https://www.yna.co.kr/industry/heavy-chemistry"),
+    Section("The Guru industry", "https://www.theguru.co.kr/news/section.html?sec_no=108"),
+    Section("Maeil Business chemical", "https://www.mk.co.kr/news/business/chemical"),
     Section("EBN industry", "https://www.ebn.co.kr/news/articleList.html?sc_section_code=S1N5&view_type=sm"),
-    Section("조선비즈 shipbuilding", "https://biz.chosun.com/tag/shipbuilding/"),
-    Section("한경 ship marine", "https://www.hankyung.com/industry/ship-marine"),
-    Section("한경 construction machinery", "https://www.hankyung.com/industry/build-machinery"),
+    Section("Chosun Biz shipbuilding", "https://biz.chosun.com/tag/shipbuilding/"),
+    Section("Hankyung ship marine", "https://www.hankyung.com/industry/ship-marine"),
+    Section("Hankyung construction machinery", "https://www.hankyung.com/industry/build-machinery"),
 ]
+
 
 def load_dotenv(dotenv_path: Path) -> None:
     if not dotenv_path.exists():
@@ -188,12 +192,28 @@ def prepare_page(page: Page, section: Section) -> None:
     page.evaluate(
         """
         () => {
+          // Ad/overlay removal. Use token/prefix matching so substrings like
+          // "headline"/"header" (which contain "ad") are NOT removed by accident.
           for (const selector of [
             'iframe',
-            '[id*="ad"]',
-            '[class*="ad"]',
+            '[class~="ad"]',
+            '[class~="ads"]',
+            '[class~="advertisement"]',
+            '[class*="advert"]',
+            '[class*="-ad-"]',
+            '[class*="_ad_"]',
+            '[class^="ad-"]',
+            '[class^="ad_"]',
+            '[class$="-ad"]',
+            '[class$="_ad"]',
+            '[class*="banner"]',
+            '[id*="advert"]',
+            '[id*="banner"]',
+            '[id^="ad-"]',
+            '[id^="ad_"]',
+            '[id~="ad"]',
             '[class*="popup"]',
-            '[class*="layer"]',
+            '[class~="layer"]',
             '[class*="cookie"]'
           ]) {
             document.querySelectorAll(selector).forEach((node) => node.remove());
@@ -243,20 +263,48 @@ def screenshot_page(page: Page, section: Section, stamp: str) -> Path:
     return path
 
 
-def format_article_message(section: Section, articles: list[dict[str, str]], checked_at: str) -> str:
+def fingerprint_articles(articles: list[dict[str, str]]) -> str:
+    """Stable fingerprint of the current top-N article list (URL based)."""
+    keys = [item["url"].split("#", 1)[0] for item in articles]
+    digest = hashlib.sha256("\n".join(keys).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def load_state() -> dict:
+    if not STATE_PATH.exists():
+        return {}
+    try:
+        data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (ValueError, OSError):
+        return {}
+
+
+def save_state(state: dict) -> None:
+    STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def format_article_message(
+    section: Section,
+    articles: list[dict[str, str]],
+    checked_at: str,
+    changed: bool,
+) -> str:
     lines = [
         f"<b>{html.escape(section.name)}</b>",
         f"Checked: {html.escape(checked_at)} KST",
         f"Section: {html.escape(section.url)}",
-        "",
     ]
+    if not changed:
+        lines.append("🔁 새로운 뉴스 없음 (상단 기사 동일)")
+    lines.append("")
     if not articles:
         lines.append("No article titles were extracted. Please check the screenshot.")
     else:
         for index, item in enumerate(articles, start=1):
             title = html.escape(item["title"])
             url = html.escape(item["url"])
-            lines.append(f"{index}. <a href=\"{url}\">{title}</a>")
+            lines.append(f'{index}. <a href="{url}">{title}</a>')
     return "\n".join(lines)
 
 
@@ -264,10 +312,13 @@ def run_once() -> int:
     OUTPUT_DIR.mkdir(exist_ok=True)
     checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
-    limit = int(os.getenv("INDUSTRY_ARTICLE_LIMIT", "15"))
+    limit = int(os.getenv("INDUSTRY_ARTICLE_LIMIT", "5"))
+    detect_n = int(os.getenv("INDUSTRY_DETECT_TOP_N", "2"))
     width = int(os.getenv("INDUSTRY_VIEWPORT_WIDTH", "1440"))
     height = int(os.getenv("INDUSTRY_VIEWPORT_HEIGHT", "1800"))
     headless = os.getenv("INDUSTRY_HEADLESS", "true").lower() != "false"
+
+    state = load_state()
 
     with sync_playwright() as playwright:
         browser: Browser = playwright.chromium.launch(headless=headless)
@@ -287,11 +338,25 @@ def run_once() -> int:
                 try:
                     prepare_page(page, section)
                     articles = extract_articles(page, section, limit)
-                    screenshot = screenshot_page(page, section, stamp)
-                    caption = f"<b>{html.escape(section.name)}</b>\n{html.escape(checked_at)} KST"
-                    send_photo(screenshot, caption)
-                    send_message(format_article_message(section, articles, checked_at))
-                    print(f"Sent {section.name}: {len(articles)} article(s)", flush=True)
+
+                    # Change is judged only on the top-N articles (default 2),
+                    # even though up to `limit` articles are shown in the message.
+                    fingerprint = fingerprint_articles(articles[:detect_n])
+                    previous = state.get(section.name, {}).get("fingerprint")
+                    # No articles => force a screenshot so the reader can verify.
+                    changed = (fingerprint != previous) or not articles
+
+                    if changed:
+                        screenshot = screenshot_page(page, section, stamp)
+                        caption = f"<b>{html.escape(section.name)}</b>\n{html.escape(checked_at)} KST"
+                        send_photo(screenshot, caption)
+                        send_message(format_article_message(section, articles, checked_at, changed=True))
+                        print(f"Sent {section.name}: {len(articles)} article(s) [changed]", flush=True)
+                    else:
+                        send_message(format_article_message(section, articles, checked_at, changed=False))
+                        print(f"Sent {section.name}: no change (screenshot skipped)", flush=True)
+
+                    state[section.name] = {"fingerprint": fingerprint, "checked_at": checked_at}
                 except Exception as exc:
                     message = f"<b>{html.escape(section.name)}</b>\nFailed: {html.escape(str(exc))}"
                     print(message, file=sys.stderr, flush=True)
@@ -299,6 +364,7 @@ def run_once() -> int:
                         send_message(message)
                 finally:
                     page.close()
+            save_state(state)
         finally:
             browser.close()
     return 0

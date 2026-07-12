@@ -36,7 +36,7 @@ os.environ["TELEGRAM_BOT_TOKEN"] = getpass.getpass("Telegram bot token: ")
 os.environ["TELEGRAM_CHAT_ID"] = getpass.getpass("Telegram chat id: ")
 
 os.environ["RUN_MODE"] = "once"
-os.environ["INDUSTRY_ARTICLE_LIMIT"] = "15"
+os.environ["INDUSTRY_ARTICLE_LIMIT"] = "5"
 os.environ["INDUSTRY_VIEWPORT_WIDTH"] = "1440"
 os.environ["INDUSTRY_VIEWPORT_HEIGHT"] = "1800"
 os.environ["INDUSTRY_FULL_PAGE_SCREENSHOT"] = "false"
@@ -60,5 +60,5 @@ Stop the cell when you want to end monitoring. If Colab disconnects, run the set
 ## Notes
 
 - Screenshots are saved to `industry_section_captures/` in the Colab runtime.
-- If you want screenshots saved persistently, mount Google Drive before running and change `OUTPUT_DIR` in the script, or download the folder after a run.
-- Telegram photo captions are short by design; article titles and links are sent as a separate message after each screenshot.
+- Change detection state is stored in `industry_section_state.json`. Colab runtimes are ephemeral, so this file is lost when the session ends; every fresh session will treat the first run as "changed". Mount Google Drive and keep the file there if you want change detection to persist.
+- When a section is unchanged, only the top-5 text list is sent and the screenshot is skipped.
