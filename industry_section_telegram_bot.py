@@ -25,6 +25,12 @@ OUTPUT_DIR = BASE_DIR / "industry_section_captures"
 STATE_PATH = BASE_DIR / "industry_section_state.json"
 
 
+def in_quiet_hours() -> bool:
+    """야간(KST 01~05시)에는 발송하지 않는다. TW 봇과 동일한 규칙."""
+    hour = datetime.now(KST).hour
+    return 1 <= hour < 5
+
+
 @dataclass(frozen=True)
 class Section:
     name: str
@@ -418,7 +424,10 @@ def main() -> int:
 
     while True:
         try:
-            run_once()
+            if in_quiet_hours() and os.getenv("INDUSTRY_IGNORE_QUIET", "false").lower() != "true":
+                print("Quiet hours (KST 01~05) → skip", flush=True)
+            else:
+                run_once()
         except (urllib.error.URLError, RuntimeError) as exc:
             print(f"Industry section bot error: {exc}", file=sys.stderr, flush=True)
             if os.getenv("TELEGRAM_NOTIFY_ERRORS", "false").lower() == "true":
