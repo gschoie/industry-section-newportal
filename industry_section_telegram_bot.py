@@ -43,8 +43,7 @@ SECTIONS = [
     Section("Maeil Business chemical", "https://www.mk.co.kr/news/business/chemical"),
     Section("EBN industry", "https://www.ebn.co.kr/news/articleList.html?sc_section_code=S1N5&view_type=sm"),
     Section("Chosun Biz shipbuilding", "https://biz.chosun.com/tag/shipbuilding/"),
-    Section("Hankyung ship marine", "https://www.hankyung.com/industry/ship-marine"),
-    Section("Hankyung construction machinery", "https://www.hankyung.com/industry/build-machinery"),
+    Section("Hankyung heavy industry", "https://www.hankyung.com/industry/1067"),
 ]
 
 
