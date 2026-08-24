@@ -2,10 +2,12 @@ name: Industry Section Bot
 
 on:
   schedule:
-    # 매시간 정각(UTC) 실행. GitHub 부하에 따라 수 분 지연될 수 있음.
-    - cron: "0 * * * *"
+    # 매 10분 회전(--rotate): 시간당 6개 섹션이 한 바퀴 — 정각 6연발 대신 10분에 하나씩.
+    # GitHub 크론은 수 분 지연될 수 있음(순서는 상태 포인터가 보존).
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
+# 크론 지연으로 두 틱이 겹치면 뒤 run이 줄을 선다(취소 아님) — 상태 파일 경합 방지.
 concurrency:
   group: industry-section-bot
   cancel-in-progress: false
@@ -13,7 +15,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -22,13 +24,24 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          python -m playwright install --with-deps chromium
+        run: pip install -r requirements.txt
 
-      # 변경 감지 상태를 실행 간 유지 (없으면 매번 전부 "변경"으로 잡힘).
+      # 크로미엄을 매번 새로 받으면 실행당 3분+ — 캐시로 실행시간을 1분 수준으로 줄인다.
+      - name: Restore Playwright browser cache
+        id: pw-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-chromium-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Playwright browser (cache miss)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install --with-deps chromium
+
+      # 변경 감지 + 회전 포인터 상태를 실행 간 유지 (없으면 매번 전부 "변경"으로 잡힘).
       - name: Restore change-detection state
         uses: actions/cache@v5
         with:
@@ -37,12 +50,12 @@ jobs:
           restore-keys: |
             industry-state-
 
-      - name: Run bot (once)
+      - name: Run bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RUN_MODE: once
           INDUSTRY_ARTICLE_LIMIT: "5"
           INDUSTRY_DETECT_TOP_N: "2"
           TELEGRAM_NOTIFY_ERRORS: "false"
-        run: python industry_section_telegram_bot.py --once
+        # 스케줄 = 회전(섹션 1개), 수동 실행 = 전체 6개 한 번에(테스트용)
+        run: python industry_section_telegram_bot.py ${{ github.event_name == 'schedule' && '--rotate' || '--once' }}

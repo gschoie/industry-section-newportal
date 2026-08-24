@@ -343,7 +343,7 @@ def format_article_message(
     return "\n".join(lines)
 
 
-def run_once() -> int:
+def run_once(sections: list[Section] | None = None, advance_rotation: bool = False) -> int:
     OUTPUT_DIR.mkdir(exist_ok=True)
     checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     stamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
@@ -354,6 +354,7 @@ def run_once() -> int:
     headless = os.getenv("INDUSTRY_HEADLESS", "true").lower() != "false"
 
     state = load_state()
+    targets = sections if sections is not None else SECTIONS
 
     with sync_playwright() as playwright:
         browser: Browser = playwright.chromium.launch(headless=headless)
@@ -368,7 +369,7 @@ def run_once() -> int:
                     "Chrome/125.0.0.0 Safari/537.36"
                 ),
             )
-            for section in SECTIONS:
+            for section in targets:
                 page = context.new_page()
                 try:
                     prepare_page(page, section)
@@ -399,6 +400,8 @@ def run_once() -> int:
                         send_message(message)
                 finally:
                     page.close()
+            if advance_rotation:
+                state["_rotation"] = (int(state.get("_rotation", 0)) + len(targets)) % len(SECTIONS)
             save_state(state)
         finally:
             browser.close()
@@ -410,13 +413,29 @@ def sleep_until_next_hour() -> None:
     time.sleep(3600 - (int(now) % 3600))
 
 
+def run_rotation() -> int:
+    """10분 간격 크론용: 이번 차례 섹션 1개만 보낸다 — 시간당 6개가 한 바퀴.
+
+    회전 포인터는 변경감지 상태 파일(industry_section_state.json)에 함께 저장되어
+    Actions 캐시로 유지된다. 크론 틱이 유실되면 그 섹션은 다음 틱으로 밀릴 뿐
+    순서는 꼬이지 않는다.
+    """
+    idx = int(load_state().get("_rotation", 0)) % len(SECTIONS)
+    return run_once(sections=[SECTIONS[idx]], advance_rotation=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Capture industry news sections and send them to Telegram.")
     parser.add_argument("--once", action="store_true", help="Run one check and exit.")
     parser.add_argument("--loop", action="store_true", help="Run every hour.")
+    parser.add_argument("--rotate", action="store_true",
+                        help="Send only the next section in rotation (for 10-minute staggered crons).")
     args = parser.parse_args()
 
     load_dotenv(BASE_DIR / ".env")
+    if args.rotate or os.getenv("RUN_MODE", "").lower() == "rotate":
+        return run_rotation()
+
     loop = args.loop or os.getenv("RUN_MODE", "once").lower() == "loop"
     if args.once:
         loop = False
