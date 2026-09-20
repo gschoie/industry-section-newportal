@@ -30,12 +30,19 @@ jobs:
         run: pip install -r requirements.txt
 
       # 크로미엄을 매번 새로 받으면 실행당 3분+ — 캐시로 실행시간을 1분 수준으로 줄인다.
+      # 캐시 키는 requirements 해시가 아니라 실제 설치된 playwright 버전으로:
+      # >=1.45 라 pip이 최신을 깔는데, 파일 해시 키는 안 바뀌어 옛 브라우저가 계속
+      # 히트했고 1.63 업그레이드에서 실행 파일 불일치로 9/16부터 전패했다.
+      - name: Get Playwright version
+        id: pw-version
+        run: echo "version=$(python -c 'import playwright; print(playwright.__version__)')" >> "$GITHUB_OUTPUT"
+
       - name: Restore Playwright browser cache
         id: pw-cache
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-chromium-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: pw-chromium-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
 
       - name: Install Playwright browser (cache miss)
         if: steps.pw-cache.outputs.cache-hit != 'true'
